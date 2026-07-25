@@ -62,7 +62,7 @@ class TuyaSensorsConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 vol.Required(CONF_DEVICE_IDS): str,
                 vol.Required(CONF_REGION, default="us"): vol.In(REGIONS),
                 vol.Optional(CONF_SCAN_INTERVAL, default=60): vol.All(
-                    vol.Coerce(int), vol.Range(min=30, max=300)
+                    vol.Coerce(int), vol.Range(min=30, max=1800)
                 ),
             }),
             errors=errors,
@@ -102,7 +102,7 @@ class TuyaOptionsFlowHandler(config_entries.OptionsFlow):
                 vol.Optional(
                     CONF_SCAN_INTERVAL,
                     default=options.get(CONF_SCAN_INTERVAL, data.get(CONF_SCAN_INTERVAL, 60))
-                ): vol.All(vol.Coerce(int), vol.Range(min=30, max=300)),
+                ): vol.All(vol.Coerce(int), vol.Range(min=30, max=1800)),
                 vol.Required(CONF_DEVICE_IDS, default=", ".join(data.get(CONF_DEVICE_IDS, ""))): str,
                 vol.Optional(
                     CONF_INCLUDE_SENSORS,
