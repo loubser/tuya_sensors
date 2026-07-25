@@ -5,9 +5,9 @@ This Home Assistant integration allows you to connect and read sensor data from 
 ## Features
 - Read sensor data from Tuya Cloud.
 - Support for multiple device IDs.
+- Dynamic sensor discovery: Fetch properties directly from Tuya Cloud.
+- Custom sensor configuration: Define names, device classes, and units for each sensor.
 - Configurable scan interval.
-- Setup via **Home Assistant UI** or **configuration.yaml**.
-- Works with sensors that are **not yet supported** through the official Tuya Integration on Home Assistant.
 
 ---
 
@@ -48,6 +48,17 @@ Alternatively, you can configure the integration manually:
       - "device_id_2"
     region: "us"
     scan_interval: 60  # Optional, in seconds
+    sensors:
+      - code: "temp_current"
+        name: "Living Room Temperature"
+        device_class: "temperature"
+        unit: "°C"
+        state_class: "measurement"
+      - code: "humidity"
+        name: "Living Room Humidity"
+        device_class: "humidity"
+        unit: "%"
+        state_class: "measurement"
 ```
 
 After modifying `configuration.yaml`, restart Home Assistant.

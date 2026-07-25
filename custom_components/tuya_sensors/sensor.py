@@ -24,61 +24,148 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.typing import ConfigType, DiscoveryInfoType
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
-from . import DOMAIN, _LOGGER, CONF_INCLUDE_SENSORS, CONF_EXCLUDE_SENSORS
-
-# Mapping of Tuya codes to Home Assistant sensor types
-# This is a starting point and can be expanded
-SENSOR_TYPES = {
-    # Temperature
-    "temp_current": {"name": "Temperature", "device_class": SensorDeviceClass.TEMPERATURE, "unit": UnitOfTemperature.CELSIUS, "state_class": SensorStateClass.MEASUREMENT},
-    "temperature": {"name": "Temperature", "device_class": SensorDeviceClass.TEMPERATURE, "unit": UnitOfTemperature.CELSIUS, "state_class": SensorStateClass.MEASUREMENT},
-    "temp_indoor": {"name": "Indoor Temperature", "device_class": SensorDeviceClass.TEMPERATURE, "unit": UnitOfTemperature.CELSIUS, "state_class": SensorStateClass.MEASUREMENT},
-    "Tin": {"name": "Indoor Temperature", "device_class": SensorDeviceClass.TEMPERATURE, "unit": UnitOfTemperature.CELSIUS, "state_class": SensorStateClass.MEASUREMENT},
-    "ToutCh1": {"name": "Outdoor Temperature", "device_class": SensorDeviceClass.TEMPERATURE, "unit": UnitOfTemperature.CELSIUS, "state_class": SensorStateClass.MEASUREMENT},
-    "temp_outdoor": {"name": "Outdoor Temperature", "device_class": SensorDeviceClass.TEMPERATURE, "unit": UnitOfTemperature.CELSIUS, "state_class": SensorStateClass.MEASUREMENT},
-
-    # Unit setting reported by some sensors ("c" or "f") — exposed as a generic sensor
-    "temp_unit_convert": {"name": "Temperature Unit", "device_class": None, "unit": None, "state_class": None},
-
-    # Humidity
-    "humidity": {"name": "Humidity", "device_class": SensorDeviceClass.HUMIDITY, "unit": PERCENTAGE, "state_class": SensorStateClass.MEASUREMENT},
-    "humidity_indoor": {"name": "Indoor Humidity", "device_class": SensorDeviceClass.HUMIDITY, "unit": PERCENTAGE, "state_class": SensorStateClass.MEASUREMENT},
-    "Hin": {"name": "Indoor Humidity", "device_class": SensorDeviceClass.HUMIDITY, "unit": PERCENTAGE, "state_class": SensorStateClass.MEASUREMENT},
-    "HoutCh1": {"name": "Outdoor Humidity", "device_class": SensorDeviceClass.HUMIDITY, "unit": PERCENTAGE, "state_class": SensorStateClass.MEASUREMENT},
-    "humidity_outdoor": {"name": "Outdoor Humidity", "device_class": SensorDeviceClass.HUMIDITY, "unit": PERCENTAGE, "state_class": SensorStateClass.MEASUREMENT},
-    
-    # Power
-    "cur_power": {"name": "Current Power", "device_class": SensorDeviceClass.POWER, "unit": UnitOfPower.WATT, "state_class": SensorStateClass.MEASUREMENT},
-    "add_ele": {"name": "Power Consumption", "device_class": SensorDeviceClass.ENERGY, "unit": UnitOfEnergy.KILO_WATT_HOUR, "state_class": SensorStateClass.TOTAL_INCREASING},
-    
-    # Voltage/Current
-    "cur_voltage": {"name": "Voltage", "device_class": SensorDeviceClass.VOLTAGE, "unit": UnitOfElectricPotential.VOLT, "state_class": SensorStateClass.MEASUREMENT},
-    "cur_current": {"name": "Current", "device_class": SensorDeviceClass.CURRENT, "unit": UnitOfElectricCurrent.AMPERE, "state_class": SensorStateClass.MEASUREMENT},
-    
-    # Battery
-    "battery_percentage": {"name": "Battery", "device_class": SensorDeviceClass.BATTERY, "unit": PERCENTAGE, "state_class": SensorStateClass.MEASUREMENT},
-    "battery_state": {"name": "Battery State", "device_class": None, "unit": None, "state_class": None},
-    
-    # CO2, VOC, PM2.5
-    "co2_value": {"name": "CO2", "device_class": SensorDeviceClass.CO2, "unit": "ppm", "state_class": SensorStateClass.MEASUREMENT},
-    "pm25_value": {"name": "PM2.5", "device_class": SensorDeviceClass.PM25, "unit": "μg/m³", "state_class": SensorStateClass.MEASUREMENT},
-    "voc_value": {"name": "VOC", "device_class": SensorDeviceClass.VOLATILE_ORGANIC_COMPOUNDS, "unit": "ppb", "state_class": SensorStateClass.MEASUREMENT},
-    
-    # Illuminance
-    "bright_value": {"name": "Brightness", "device_class": SensorDeviceClass.ILLUMINANCE, "unit": "lx", "state_class": SensorStateClass.MEASUREMENT},
-    
-    # Pressure
-    "pressure": {"name": "Pressure", "device_class": SensorDeviceClass.PRESSURE, "unit": UnitOfPressure.HPA, "state_class": SensorStateClass.MEASUREMENT},
-    
-    # Generic
-    "countdown": {"name": "Countdown", "device_class": SensorDeviceClass.DURATION, "unit": UnitOfTime.SECONDS, "state_class": SensorStateClass.MEASUREMENT},
-    "filter_life": {"name": "Filter Life", "device_class": None, "unit": PERCENTAGE, "state_class": SensorStateClass.MEASUREMENT},
-}
+from . import DOMAIN, _LOGGER
 
 # Tuya API error code returned when a device does not support the /status
 # endpoint (typical of battery-powered sensors — use /properties instead)
 _TUYA_ERR_FUNCTION_NOT_SUPPORT = 2003
 
+async def _fetch_properties(hass, tuya_api, device_ids):
+    """Fetch all available property codes for the given device IDs."""
+    property_codes = set()
+    errors_found = set()
+    for device_id in device_ids:
+        # 1. Try /status first (v1.0)
+        _LOGGER.debug("Device %s: trying /status endpoint to discover properties", device_id)
+        try:
+            response = await hass.async_add_executor_job(
+                tuya_api.get, f"/v1.0/devices/{device_id}/status"
+            )
+            _LOGGER.debug("Device %s: /status discovery response: %s", device_id, response)
+            if not response.get("success", False):
+                code = response.get("code")
+                if code == 28841107:
+                    _LOGGER.error("Device %s: Tuya Cloud Error 28841107 - The data center is suspended or no permission. "
+                                  "Please ensure the correct Data Center is enabled in your Tuya IoT Platform project settings.", device_id)
+                    errors_found.add("data_center_error")
+            if response.get("success", False):
+                res = response.get("result", [])
+                items = res if isinstance(res, list) else []
+                for item in items:
+                    if isinstance(item, dict) and "code" in item:
+                        property_codes.add(item["code"])
+        except Exception as e:
+            _LOGGER.error("Error fetching /status for device %s: %s", device_id, e)
+        
+        # 2. Try /properties (v2.0)
+        _LOGGER.debug("Device %s: trying /properties endpoint to discover properties", device_id)
+        try:
+            response = await hass.async_add_executor_job(
+                tuya_api.get, f"/v2.0/cloud/thing/{device_id}/shadow/properties"
+            )
+            _LOGGER.debug("Device %s: /properties discovery response: %s", device_id, response)
+            if not response.get("success", False):
+                code = response.get("code")
+                if code == 28841107:
+                    errors_found.add("data_center_error")
+            if response.get("success", False):
+                res = response.get("result", {})
+                # result might be the dict with 'properties' or the list directly
+                props = res.get("properties", []) if isinstance(res, dict) else (res if isinstance(res, list) else [])
+                for p in props:
+                    if isinstance(p, dict) and "code" in p:
+                        property_codes.add(p["code"])
+        except Exception as e:
+            _LOGGER.error("Error fetching /properties for device %s: %s", device_id, e)
+
+        # 3. Try /functions (v1.0) - another common source for property codes
+        _LOGGER.debug("Device %s: trying /functions endpoint to discover properties", device_id)
+        try:
+            response = await hass.async_add_executor_job(
+                tuya_api.get, f"/v1.0/devices/{device_id}/functions"
+            )
+            _LOGGER.debug("Device %s: /functions discovery response: %s", device_id, response)
+            if not response.get("success", False):
+                code = response.get("code")
+                if code == 28841107:
+                    errors_found.add("data_center_error")
+            if response.get("success", False):
+                res = response.get("result", {})
+                # result might be the list directly or a dict containing 'functions'
+                funcs = res.get("functions", []) if isinstance(res, dict) else (res if isinstance(res, list) else [])
+                for f in funcs:
+                    if isinstance(f, dict) and "code" in f:
+                        property_codes.add(f["code"])
+        except Exception as e:
+            _LOGGER.error("Error fetching /functions for device %s: %s", device_id, e)
+
+        # 4. Try /specifications (v1.0) - yet another one
+        _LOGGER.debug("Device %s: trying /specifications endpoint to discover properties", device_id)
+        try:
+            response = await hass.async_add_executor_job(
+                tuya_api.get, f"/v1.0/devices/{device_id}/specifications"
+            )
+            _LOGGER.debug("Device %s: /specifications discovery response: %s", device_id, response)
+            if not response.get("success", False):
+                code = response.get("code")
+                if code == 28841107:
+                    errors_found.add("data_center_error")
+            if response.get("success", False):
+                res = response.get("result", {})
+                # Specifications often have functions and status
+                for key in ["functions", "status"]:
+                    items = res.get(key, [])
+                    for item in items:
+                        if isinstance(item, dict) and "code" in item:
+                            property_codes.add(item["code"])
+        except Exception as e:
+            _LOGGER.error("Error fetching /specifications for device %s: %s", device_id, e)
+
+        # 5. Try device info 'status' field (v1.0)
+        _LOGGER.debug("Device %s: trying /v1.0/devices/{id} endpoint to discover properties", device_id)
+        try:
+            response = await hass.async_add_executor_job(
+                tuya_api.get, f"/v1.0/devices/{device_id}"
+            )
+            _LOGGER.debug("Device %s: device info discovery response: %s", device_id, response)
+            if not response.get("success", False):
+                code = response.get("code")
+                if code == 28841107:
+                    errors_found.add("data_center_error")
+            if response.get("success", False):
+                res = response.get("result", {})
+                status = res.get("status", [])
+                for item in status:
+                    if isinstance(item, dict) and "code" in item:
+                        property_codes.add(item["code"])
+        except Exception as e:
+            _LOGGER.error("Error fetching device info for device %s: %s", device_id, e)
+
+        # 6. Try /v1.0/iot-03/devices/{id}/status - another variation
+        _LOGGER.debug("Device %s: trying /v1.0/iot-03/devices/{id}/status endpoint", device_id)
+        try:
+            response = await hass.async_add_executor_job(
+                tuya_api.get, f"/v1.0/iot-03/devices/{device_id}/status"
+            )
+            _LOGGER.debug("Device %s: /v1.0/iot-03 discovery response: %s", device_id, response)
+            if not response.get("success", False):
+                code = response.get("code")
+                if code == 28841107:
+                    errors_found.add("data_center_error")
+            if response.get("success", False):
+                res = response.get("result", [])
+                items = res if isinstance(res, list) else []
+                for item in items:
+                    if isinstance(item, dict) and "code" in item:
+                        property_codes.add(item["code"])
+        except Exception as e:
+            _LOGGER.debug("Error fetching iot-03 status for device %s: %s", device_id, e)
+    
+    # If still no properties found, log a summary
+    if not property_codes:
+        _LOGGER.warning("Discovery finished: No properties found for device IDs: %s. Check debug logs for API responses.", device_ids)
+
+    return sorted(list(property_codes)), list(errors_found)
 
 def _normalise_status(result):
     """Return a flat [{code, value}] list from a /status result payload.
@@ -188,8 +275,7 @@ async def _async_setup(
     api_key = domain_config["api_key"]
     api_secret = domain_config["api_secret"]
     device_ids = domain_config["device_ids"]
-    include_sensors = domain_config.get("include_sensors", [])
-    exclude_sensors = domain_config.get("exclude_sensors", [])
+    sensors_config = domain_config.get("sensors", [])
     region = domain_config["region"]
     scan_interval = domain_config["scan_interval"]
 
@@ -274,69 +360,24 @@ async def _async_setup(
                 endpoint_used
             )
 
-            # Get device specification for additional sensor metadata
-            spec_data = {}
-            try:
-                specs_response = await hass.async_add_executor_job(
-                    tuya_api.get, f"/v1.0/devices/{device_id}/specifications"
-                )
-                _LOGGER.debug("Device %s: specifications response: %s", device_id, specs_response)
-
-                if specs_response.get("success", False):
-                    specs = specs_response.get("result", {})
-                    spec_data = specs.get("status", [])
-            except Exception:
-                pass  # Specs are optional — don't abort device setup on failure
-
-            # Create a map of code to spec for easier lookup
-            spec_map = {item.get("code"): item for item in spec_data if "code" in item}
-
-            # Process each sensor data point
-            for sensor_data in status_data:
-                code = sensor_data.get("code")
-                value = sensor_data.get("value")
-                _LOGGER.debug("Device %s: processing data point code='%s' value='%s'", device_id, code, value)
-
-                # Skip if code is None
-                if code is None:
-                    _LOGGER.debug("Device %s: skipping data point with None code", device_id)
+            # Process configured sensors
+            for sensor_cfg in sensors_config:
+                code = sensor_cfg.get("code")
+                
+                # Check if this sensor data point exists in the device status
+                if not any(s.get("code") == code for s in status_data):
+                    _LOGGER.debug("Device %s: code '%s' not found in status data, skipping", device_id, code)
                     continue
 
-                # Check if this sensor should be included/excluded
-                if include_sensors and code not in include_sensors:
-                    _LOGGER.debug("Device %s: skipping code '%s' — not in include_sensors list %s", device_id, code, include_sensors)
-                    continue
-                if code in exclude_sensors:
-                    _LOGGER.debug("Device %s: skipping code '%s' — in exclude_sensors list", device_id, code)
-                    continue
-
-                # Get sensor type definition from our mapping
-                sensor_type = SENSOR_TYPES.get(code)
-                if sensor_type:
-                    _LOGGER.debug("Device %s: code '%s' matched SENSOR_TYPES: %s", device_id, code, sensor_type)
-                else:
-                    _LOGGER.debug("Device %s: code '%s' not in SENSOR_TYPES, attempting auto-detection", device_id, code)
-
-                # If we don't have a predefined type, try to auto-detect
-                if not sensor_type:
-                    sensor_type = auto_detect_sensor_type(code, value, spec_map.get(code, {}))
-                    _LOGGER.debug("Device %s: auto-detected type for code '%s': %s", device_id, code, sensor_type)
-
-                # Skip if we still can't determine the sensor type
-                if not sensor_type:
-                    _LOGGER.debug("Skipping unknown sensor type: %s with value %s", code, value)
-                    continue
-
-                # Create sensor entity
-                _LOGGER.debug("Device %s: creating entity for code '%s' name='%s'", device_id, code, sensor_type["name"])
+                _LOGGER.debug("Device %s: creating entity for code '%s' name='%s'", device_id, code, sensor_cfg["name"])
                 sensor_entity = TuyaSensor(
                     coordinator=coordinator,
                     device_name=device_name,
                     code=code,
-                    name=sensor_type["name"],
-                    device_class=sensor_type["device_class"],
-                    unit=sensor_type["unit"],
-                    state_class=sensor_type["state_class"]
+                    name=sensor_cfg["name"],
+                    device_class=sensor_cfg.get("device_class"),
+                    unit=sensor_cfg.get("unit"),
+                    state_class=sensor_cfg.get("state_class")
                 )
 
                 sensor_entities.append(sensor_entity)
@@ -352,43 +393,6 @@ async def _async_setup(
     except Exception as e:
         _LOGGER.error("Error setting up Tuya sensors integration: %s", str(e))
 
-
-def auto_detect_sensor_type(code, value, spec_data):
-    """Try to auto-detect sensor type based on code, value and specifications."""
-    # Try to detect by code name patterns
-    if "temp" in code:
-        return {"name": "Temperature", "device_class": SensorDeviceClass.TEMPERATURE, "unit": UnitOfTemperature.CELSIUS, "state_class": SensorStateClass.MEASUREMENT}
-    elif "humidity" in code:
-        return {"name": "Humidity", "device_class": SensorDeviceClass.HUMIDITY, "unit": PERCENTAGE, "state_class": SensorStateClass.MEASUREMENT}
-    elif "power" in code or "energy" in code or "electricity" in code:
-        if isinstance(value, (int, float)) and value > 1000:  # Likely energy counter
-            return {"name": "Energy", "device_class": SensorDeviceClass.ENERGY, "unit": UnitOfEnergy.KILO_WATT_HOUR, "state_class": SensorStateClass.TOTAL_INCREASING}
-        else:
-            return {"name": "Power", "device_class": SensorDeviceClass.POWER, "unit": UnitOfPower.WATT, "state_class": SensorStateClass.MEASUREMENT}
-    elif "voltage" in code:
-        return {"name": "Voltage", "device_class": SensorDeviceClass.VOLTAGE, "unit": UnitOfElectricPotential.VOLT, "state_class": SensorStateClass.MEASUREMENT}
-    elif "current" in code and not "power" in code:
-        return {"name": "Current", "device_class": SensorDeviceClass.CURRENT, "unit": UnitOfElectricCurrent.AMPERE, "state_class": SensorStateClass.MEASUREMENT}
-    elif "battery" in code:
-        return {"name": "Battery", "device_class": SensorDeviceClass.BATTERY, "unit": PERCENTAGE, "state_class": SensorStateClass.MEASUREMENT}
-    elif "co2" in code:
-        return {"name": "CO2", "device_class": SensorDeviceClass.CO2, "unit": "ppm", "state_class": SensorStateClass.MEASUREMENT}
-    elif "pm25" in code or "pm2_5" in code:
-        return {"name": "PM2.5", "device_class": SensorDeviceClass.PM25, "unit": "μg/m³", "state_class": SensorStateClass.MEASUREMENT}
-    
-    # Try to detect based on specification data
-    if spec_data:
-        if spec_data.get("type") == "Integer" or spec_data.get("type") == "Float":
-            # Try to determine unit and type from value range and step
-            value_min = spec_data.get("min", -1)
-            value_max = spec_data.get("max", -1)
-            
-            # Generic percentage sensor if range is 0-100
-            if value_min == 0 and value_max == 100:
-                return {"name": code.replace("_", " ").title(), "device_class": None, "unit": PERCENTAGE, "state_class": SensorStateClass.MEASUREMENT}
-    
-    # Default: create a generic sensor with the code as name
-    return {"name": code.replace("_", " ").title(), "device_class": None, "unit": None, "state_class": None}
 
 class TuyaDataCoordinator(DataUpdateCoordinator):
     """Class to manage fetching Tuya data."""
@@ -437,6 +441,11 @@ class TuyaDataCoordinator(DataUpdateCoordinator):
                 _LOGGER.debug("Coordinator %s: /status poll response: %s", self._device_id, response)
 
                 if not response.get("success", False):
+                    # Check if we should switch to properties (happens if device switched from powered to battery?)
+                    if response.get("code") == _TUYA_ERR_FUNCTION_NOT_SUPPORT:
+                         _LOGGER.info("Device %s switched to properties endpoint", self._device_id)
+                         self._endpoint_used = "properties"
+                         return await self._async_update_data()
                     raise UpdateFailed(f"Failed to get status for device {self._device_id}: {response}")
 
                 data = _normalise_status(response.get("result", []))
@@ -481,7 +490,9 @@ class TuyaSensor(SensorEntity):
                 value = state.get("value")
                 # Temperature values from both endpoints are reported in tenths
                 # of a degree (e.g. 235 → 23.5 °C)
-                if self._attr_device_class == SensorDeviceClass.TEMPERATURE:
+                # We check the device class to decide if we should divide by 10.
+                # In HA 2023.1+, SensorDeviceClass values are strings.
+                if self._attr_device_class == SensorDeviceClass.TEMPERATURE or self._attr_device_class == "temperature":
                     try:
                         return int(value) / 10
                     except (TypeError, ValueError):

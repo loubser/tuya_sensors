@@ -26,8 +26,18 @@ DEFAULT_SCAN_INTERVAL = timedelta(minutes=1)
 # Custom constants
 CONF_API_SECRET = "api_secret"
 CONF_DEVICE_IDS = "device_ids"
-CONF_INCLUDE_SENSORS = "include_sensors"
-CONF_EXCLUDE_SENSORS = "exclude_sensors"
+CONF_SENSORS = "sensors"
+
+# Configuration schema for individual sensors
+SENSOR_SCHEMA = vol.Schema(
+    {
+        vol.Required("code"): cv.string,
+        vol.Required("name"): cv.string,
+        vol.Optional("device_class"): cv.string,
+        vol.Optional("unit"): cv.string,
+        vol.Optional("state_class"): cv.string,
+    }
+)
 
 # Configuration schema
 CONFIG_SCHEMA = vol.Schema(
@@ -37,8 +47,7 @@ CONFIG_SCHEMA = vol.Schema(
                 vol.Required(CONF_API_KEY): cv.string,
                 vol.Required(CONF_API_SECRET): cv.string,
                 vol.Required(CONF_DEVICE_IDS): vol.All(cv.ensure_list, [cv.string]),
-                vol.Optional(CONF_INCLUDE_SENSORS, default=[]): vol.All(cv.ensure_list, [cv.string]),
-                vol.Optional(CONF_EXCLUDE_SENSORS, default=[]): vol.All(cv.ensure_list, [cv.string]),
+                vol.Optional(CONF_SENSORS, default=[]): vol.All(cv.ensure_list, [SENSOR_SCHEMA]),
                 vol.Optional(CONF_REGION, default="us"): cv.string,
                 vol.Optional(
                     CONF_SCAN_INTERVAL, default=DEFAULT_SCAN_INTERVAL
@@ -58,8 +67,7 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     api_key = conf[CONF_API_KEY]
     api_secret = conf[CONF_API_SECRET]
     device_ids = conf[CONF_DEVICE_IDS]
-    include_sensors = conf[CONF_INCLUDE_SENSORS]
-    exclude_sensors = conf[CONF_EXCLUDE_SENSORS]
+    sensors = conf[CONF_SENSORS]
     region = conf[CONF_REGION]
     scan_interval = conf[CONF_SCAN_INTERVAL]
     
@@ -67,8 +75,7 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
         "api_key": api_key,
         "api_secret": api_secret,
         "device_ids": device_ids,
-        "include_sensors": include_sensors,
-        "exclude_sensors": exclude_sensors,
+        "sensors": sensors,
         "region": region,
         "scan_interval": scan_interval,
     }
