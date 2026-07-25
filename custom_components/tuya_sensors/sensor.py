@@ -36,7 +36,10 @@ SENSOR_TYPES = {
     "Tin": {"name": "Indoor Temperature", "device_class": SensorDeviceClass.TEMPERATURE, "unit": UnitOfTemperature.CELSIUS, "state_class": SensorStateClass.MEASUREMENT},
     "ToutCh1": {"name": "Outdoor Temperature", "device_class": SensorDeviceClass.TEMPERATURE, "unit": UnitOfTemperature.CELSIUS, "state_class": SensorStateClass.MEASUREMENT},
     "temp_outdoor": {"name": "Outdoor Temperature", "device_class": SensorDeviceClass.TEMPERATURE, "unit": UnitOfTemperature.CELSIUS, "state_class": SensorStateClass.MEASUREMENT},
-    
+
+    # Unit setting reported by some sensors ("c" or "f") — exposed as a generic sensor
+    "temp_unit_convert": {"name": "Temperature Unit", "device_class": None, "unit": None, "state_class": None},
+
     # Humidity
     "humidity": {"name": "Humidity", "device_class": SensorDeviceClass.HUMIDITY, "unit": PERCENTAGE, "state_class": SensorStateClass.MEASUREMENT},
     "humidity_indoor": {"name": "Indoor Humidity", "device_class": SensorDeviceClass.HUMIDITY, "unit": PERCENTAGE, "state_class": SensorStateClass.MEASUREMENT},

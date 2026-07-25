@@ -29,7 +29,8 @@ COMMON_SENSORS = [
     "battery",
     "switch",
     "motion",
-    "brightness"
+    "brightness",
+    "temp_unit_convert"
 ]
 
 class TuyaSensorsConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
