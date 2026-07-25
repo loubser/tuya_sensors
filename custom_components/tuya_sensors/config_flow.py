@@ -72,15 +72,18 @@ class TuyaSensorsConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     @callback
     def async_get_options_flow(config_entry):
         """Get the options flow for this handler."""
-        return TuyaOptionsFlowHandler(config_entry)
+        # This method is no longer available in ha core api
+        # return TuyaOptionsFlowHandler(config_entry)
+        return TuyaOptionsFlowHandler()
 
 
 class TuyaOptionsFlowHandler(config_entries.OptionsFlow):
     """Handle Tuya integration options."""
 
-    def __init__(self, config_entry):
+    def __init__(self):
         """Initialize options flow."""
-        self.config_entry = config_entry
+        # the base class provides self.config_entry automatically — no need to assign it
+        # self.config_entry = config_entry
         self.sensor_options = {s: s for s in COMMON_SENSORS}
 
     async def async_step_init(self, user_input=None):
