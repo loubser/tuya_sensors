@@ -29,7 +29,8 @@ COMMON_SENSORS = [
     "battery",
     "switch",
     "motion",
-    "brightness"
+    "brightness",
+    "temp_unit_convert"
 ]
 
 class TuyaSensorsConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
@@ -62,7 +63,7 @@ class TuyaSensorsConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 vol.Required(CONF_DEVICE_IDS): str,
                 vol.Required(CONF_REGION, default="us"): vol.In(REGIONS),
                 vol.Optional(CONF_SCAN_INTERVAL, default=60): vol.All(
-                    vol.Coerce(int), vol.Range(min=30, max=300)
+                    vol.Coerce(int), vol.Range(min=30, max=1800)
                 ),
             }),
             errors=errors,
@@ -72,15 +73,18 @@ class TuyaSensorsConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     @callback
     def async_get_options_flow(config_entry):
         """Get the options flow for this handler."""
-        return TuyaOptionsFlowHandler(config_entry)
+        # This method is no longer available in ha core api
+        # return TuyaOptionsFlowHandler(config_entry)
+        return TuyaOptionsFlowHandler()
 
 
 class TuyaOptionsFlowHandler(config_entries.OptionsFlow):
     """Handle Tuya integration options."""
 
-    def __init__(self, config_entry):
+    def __init__(self):
         """Initialize options flow."""
-        self.config_entry = config_entry
+        # the base class provides self.config_entry automatically — no need to assign it
+        # self.config_entry = config_entry
         self.sensor_options = {s: s for s in COMMON_SENSORS}
 
     async def async_step_init(self, user_input=None):
@@ -102,7 +106,7 @@ class TuyaOptionsFlowHandler(config_entries.OptionsFlow):
                 vol.Optional(
                     CONF_SCAN_INTERVAL,
                     default=options.get(CONF_SCAN_INTERVAL, data.get(CONF_SCAN_INTERVAL, 60))
-                ): vol.All(vol.Coerce(int), vol.Range(min=30, max=300)),
+                ): vol.All(vol.Coerce(int), vol.Range(min=30, max=1800)),
                 vol.Required(CONF_DEVICE_IDS, default=", ".join(data.get(CONF_DEVICE_IDS, ""))): str,
                 vol.Optional(
                     CONF_INCLUDE_SENSORS,
