@@ -196,46 +196,55 @@ def _normalise_properties(result):
 
 
 async def _async_fetch_status(hass, tuya_api, device_id):
-    """Fetch device status, falling back to /properties on error 2003.
+    """Fetch device status from both /status and /properties to find the best source.
 
     Returns (normalised_data, endpoint_used) where endpoint_used is either
-    "status" or "properties". Raises UpdateFailed if both endpoints fail.
+    "status" or "properties".
     """
-    # Try /status first
+    status_data = []
+    properties_data = []
+    
+    # 1. Try /status
     _LOGGER.debug("Device %s: trying /status endpoint", device_id)
-    response = await hass.async_add_executor_job(
-        tuya_api.get, f"/v1.0/devices/{device_id}/status"
-    )
-    _LOGGER.debug("Device %s: /status raw response: %s", device_id, response)
+    try:
+        response = await hass.async_add_executor_job(
+            tuya_api.get, f"/v1.0/devices/{device_id}/status"
+        )
+        _LOGGER.debug("Device %s: /status raw response: %s", device_id, response)
+        if response.get("success", False):
+            status_data = _normalise_status(response.get("result", []))
+    except Exception as e:
+        _LOGGER.debug("Device %s: /status call failed: %s", device_id, e)
 
-    if response.get("success", False):
-        data = _normalise_status(response.get("result", []))
-        _LOGGER.debug("Device %s: /status returned %d data points: %s", device_id, len(data), data)
-        return data, "status"
+    # 2. Try /properties
+    _LOGGER.debug("Device %s: trying /properties endpoint", device_id)
+    try:
+        response = await hass.async_add_executor_job(
+            tuya_api.get, f"/v2.0/cloud/thing/{device_id}/shadow/properties"
+        )
+        _LOGGER.debug("Device %s: /properties raw response: %s", device_id, response)
+        if response.get("success", False):
+            properties_data = _normalise_properties(response.get("result", {}))
+    except Exception as e:
+        _LOGGER.debug("Device %s: /properties call failed: %s", device_id, e)
 
-    if response.get("code") != _TUYA_ERR_FUNCTION_NOT_SUPPORT:
-        # A genuine error — don't try the other endpoint
-        raise UpdateFailed(f"Failed to get status for device {device_id}: {response}")
+    # Decision logic:
+    # If both have data, pick the one with more data points.
+    # If they have the same amount, prefer /status (legacy/standard).
+    if len(properties_data) > len(status_data):
+        _LOGGER.debug("Device %s: choosing 'properties' endpoint (more data: %d vs %d)", 
+                     device_id, len(properties_data), len(status_data))
+        return properties_data, "properties"
+    
+    if status_data:
+        _LOGGER.debug("Device %s: choosing 'status' endpoint (%d data points)", device_id, len(status_data))
+        return status_data, "status"
+        
+    if properties_data:
+        _LOGGER.debug("Device %s: choosing 'properties' endpoint (%d data points)", device_id, len(properties_data))
+        return properties_data, "properties"
 
-    # /status returned 2003 — device uses property-based reporting (e.g. battery-powered sensors)
-    # Note: properties are served from the v2.0 API, not v1.0
-    _LOGGER.debug(
-        "Device %s does not support /status (code 2003); trying /properties", device_id
-    )
-    response = await hass.async_add_executor_job(
-        tuya_api.get, f"/v2.0/cloud/thing/{device_id}/shadow/properties"
-    )
-    _LOGGER.debug("Device %s: /properties raw response: %s", device_id, response)
-
-    if response.get("success", False):
-        data = _normalise_properties(response.get("result", {}))
-        _LOGGER.debug("Device %s: /properties returned %d data points: %s", device_id, len(data), data)
-        return data, "properties"
-
-    raise UpdateFailed(
-        f"Failed to get status for device {device_id} via both /status and "
-        f"/properties. Last error: {response}"
-    )
+    raise UpdateFailed(f"Failed to get status for device {device_id} from both endpoints")
 
 
 async def async_setup_platform(
@@ -375,6 +384,7 @@ async def _async_setup(
                     device_class=sensor_cfg.get("device_class"),
                     unit=sensor_cfg.get("unit"),
                     state_class=sensor_cfg.get("state_class"),
+                    factor=sensor_cfg.get("factor", 1.0),
                     entry_id=entry_id
                 )
 
@@ -458,12 +468,13 @@ class TuyaDataCoordinator(DataUpdateCoordinator):
 class TuyaSensor(SensorEntity):
     """Representation of a Tuya Sensor."""
     
-    def __init__(self, coordinator, device_name, code, name, device_class, unit, state_class, entry_id=None):
+    def __init__(self, coordinator, device_name, code, name, device_class, unit, state_class, factor=1.0, entry_id=None):
         """Initialize the sensor."""
         self.coordinator = coordinator
         self._device_id = coordinator._device_id
         self._code = code
         self._name = f"{device_name} {name}"
+        self._factor = factor
         
         # Set entity properties
         self._attr_device_class = device_class
@@ -499,16 +510,10 @@ class TuyaSensor(SensorEntity):
         for state in self.coordinator.data:
             if state.get("code") == self._code:
                 value = state.get("value")
-                # Temperature values from both endpoints are reported in tenths
-                # of a degree (e.g. 235 → 23.5 °C)
-                # We check the device class to decide if we should divide by 10.
-                # In HA 2023.1+, SensorDeviceClass values are strings.
-                if self._attr_device_class == SensorDeviceClass.TEMPERATURE or self._attr_device_class == "temperature":
-                    try:
-                        return int(value) / 10
-                    except (TypeError, ValueError):
-                        return None
-                return value
+                try:
+                    return float(value) * self._factor
+                except (TypeError, ValueError):
+                    return value
         return None
         
     @property

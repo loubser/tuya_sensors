@@ -26,7 +26,8 @@
           "name": "Name",
           "device_class": "Device Class",
           "unit": "Unit of Measurement",
-          "state_class": "State Class"
+          "state_class": "State Class",
+          "factor": "Factor"
         }
       }
     },
@@ -65,7 +66,8 @@
           "name": "Name",
           "device_class": "Device Class",
           "unit": "Unit of Measurement",
-          "state_class": "State Class"
+          "state_class": "State Class",
+          "factor": "Factor"
         }
       }
     }

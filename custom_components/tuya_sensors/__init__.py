@@ -36,6 +36,7 @@ SENSOR_SCHEMA = vol.Schema(
         vol.Optional("device_class"): cv.string,
         vol.Optional("unit"): cv.string,
         vol.Optional("state_class"): cv.string,
+        vol.Optional("factor", default=1.0): vol.Coerce(float),
     }
 )
 

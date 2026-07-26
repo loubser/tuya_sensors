@@ -127,6 +127,7 @@ class TuyaSensorsConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 "device_class": user_input.get("device_class"),
                 "unit": user_input.get("unit"),
                 "state_class": user_input.get("state_class"),
+                "factor": user_input.get("factor", 1.0),
             })
             self.selected_property_index += 1
             return await self.async_step_configure_sensor()
@@ -135,6 +136,15 @@ class TuyaSensorsConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         device_classes = [None] + sorted([item.value for item in SensorDeviceClass])
         state_classes = [None] + sorted([item.value for item in SensorStateClass])
 
+        # Suggest a default factor
+        default_factor = 1.0
+        if "temp" in code.lower() or "temperature" in code.lower():
+            default_factor = 0.1
+        elif "humidity" in code.lower():
+            default_factor = 0.1
+        elif "pressure" in code.lower():
+            default_factor = 0.1
+
         return self.async_show_form(
             step_id="configure_sensor",
             data_schema=vol.Schema({
@@ -142,6 +152,7 @@ class TuyaSensorsConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 vol.Optional("device_class"): vol.In(device_classes),
                 vol.Optional("unit"): str,
                 vol.Optional("state_class"): vol.In(state_classes),
+                vol.Optional("factor", default=default_factor): vol.Coerce(float),
             }),
             description_placeholders={"code": code},
         )
@@ -253,12 +264,22 @@ class TuyaOptionsFlowHandler(config_entries.OptionsFlow):
                 "device_class": user_input.get("device_class"),
                 "unit": user_input.get("unit"),
                 "state_class": user_input.get("state_class"),
+                "factor": user_input.get("factor", 1.0),
             })
             self.selected_property_index += 1
             return await self.async_step_configure_sensor()
 
         device_classes = [None] + sorted([item.value for item in SensorDeviceClass])
         state_classes = [None] + sorted([item.value for item in SensorStateClass])
+
+        # Suggest a default factor
+        default_factor = 1.0
+        if "temp" in code.lower() or "temperature" in code.lower():
+            default_factor = 0.1
+        elif "humidity" in code.lower():
+            default_factor = 0.1
+        elif "pressure" in code.lower():
+            default_factor = 0.1
 
         return self.async_show_form(
             step_id="configure_sensor",
@@ -267,6 +288,7 @@ class TuyaOptionsFlowHandler(config_entries.OptionsFlow):
                 vol.Optional("device_class"): vol.In(device_classes),
                 vol.Optional("unit"): str,
                 vol.Optional("state_class"): vol.In(state_classes),
+                vol.Optional("factor", default=default_factor): vol.Coerce(float),
             }),
             description_placeholders={"code": code},
         )
