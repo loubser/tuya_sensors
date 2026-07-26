@@ -312,6 +312,10 @@ async def _async_setup(
                 hass, _LOGGER, tuya_api, device_id, scan_interval, endpoint_used
             )
 
+            # Seed the coordinator with the initial data we just fetched
+            # so that sensors have state immediately on startup.
+            coordinator.async_set_updated_data(status_data)
+
             # Process configured sensors
             for sensor_cfg in sensors_config:
                 code = sensor_cfg.get("code")
@@ -347,7 +351,7 @@ async def _async_setup(
 
         if sensor_entities:
             _LOGGER.info("Found %d Tuya sensors", len(sensor_entities))
-            async_add_entities(sensor_entities, update_before_add=True)
+            async_add_entities(sensor_entities, update_before_add=False)
         else:
             _LOGGER.warning("No compatible sensors found in your Tuya account")
 
