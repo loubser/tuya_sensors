@@ -255,20 +255,17 @@ async def async_setup_entry(
 ) -> None:
     # Get config from hass.data
     domain_config = hass.data[DOMAIN].get(entry.entry_id)
-    await _async_setup(hass, domain_config, async_add_entities)
+    await _async_setup(hass, domain_config, async_add_entities, entry.entry_id)
 
 async def _async_setup(
     hass,
     domain_config,
-    async_add_entities
+    async_add_entities,
+    entry_id=None
 ) -> None:
     """Set up the Tuya sensor."""
-    try:
-        from tuya_connector import TuyaOpenAPI, TUYA_LOGGER
-    except ImportError:
-        _LOGGER.error("Failed to import tuya_connector. Make sure it's installed.")
-        return
-
+    from tuya_connector import TuyaOpenAPI, TUYA_LOGGER
+    
     # Set up logging for tuya_connector
     TUYA_LOGGER.setLevel(logging.INFO)
     
@@ -377,7 +374,8 @@ async def _async_setup(
                     name=sensor_cfg["name"],
                     device_class=sensor_cfg.get("device_class"),
                     unit=sensor_cfg.get("unit"),
-                    state_class=sensor_cfg.get("state_class")
+                    state_class=sensor_cfg.get("state_class"),
+                    entry_id=entry_id
                 )
 
                 sensor_entities.append(sensor_entity)
@@ -460,7 +458,7 @@ class TuyaDataCoordinator(DataUpdateCoordinator):
 class TuyaSensor(SensorEntity):
     """Representation of a Tuya Sensor."""
     
-    def __init__(self, coordinator, device_name, code, name, device_class, unit, state_class):
+    def __init__(self, coordinator, device_name, code, name, device_class, unit, state_class, entry_id=None):
         """Initialize the sensor."""
         self.coordinator = coordinator
         self._device_id = coordinator._device_id
@@ -471,7 +469,20 @@ class TuyaSensor(SensorEntity):
         self._attr_device_class = device_class
         self._attr_state_class = state_class
         self._attr_native_unit_of_measurement = unit
-        self._attr_unique_id = f"tuya_{self._device_id}_{code}"
+        
+        # Use entry_id in unique_id if available to avoid collisions between multiple installations
+        if entry_id:
+            self._attr_unique_id = f"tuya_{entry_id}_{self._device_id}_{code}"
+        else:
+            self._attr_unique_id = f"tuya_{self._device_id}_{code}"
+
+        # Add device info to group sensors under a single device in HA
+        self._attr_device_info = {
+            "identifiers": {(DOMAIN, self._device_id)},
+            "name": device_name,
+            "manufacturer": "Tuya",
+            "model": "Tuya Cloud Sensor",
+        }
         
     @property
     def name(self):

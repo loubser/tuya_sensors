@@ -46,6 +46,8 @@ class TuyaSensorsConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             
             # Verify credentials and fetch properties
             try:
+                # Pre-load tuya_connector in executor
+                await self.hass.async_add_executor_job(__import__, "tuya_connector")
                 from tuya_connector import TuyaOpenAPI
                 endpoint = f"https://openapi.tuya{user_input[CONF_REGION]}.com"
                 tuya_api = TuyaOpenAPI(
@@ -181,6 +183,8 @@ class TuyaOptionsFlowHandler(config_entries.OptionsFlow):
             # If user wants to re-configure sensors
             if user_input.get("reconfigure_sensors"):
                 try:
+                    # Pre-load tuya_connector in executor
+                    await self.hass.async_add_executor_job(__import__, "tuya_connector")
                     from tuya_connector import TuyaOpenAPI
                     endpoint = f"https://openapi.tuya{self.data[CONF_REGION]}.com"
                     tuya_api = TuyaOpenAPI(

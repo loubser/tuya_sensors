@@ -63,6 +63,15 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     if DOMAIN not in config:
         return True
         
+    # Pre-load tuya_connector in the executor to avoid blocking the event loop
+    try:
+        await hass.async_add_executor_job(
+            __import__, "tuya_connector"
+        )
+    except ImportError:
+        _LOGGER.error("Failed to import tuya_connector. Make sure it's installed.")
+        return False
+
     conf = config[DOMAIN]
     api_key = conf[CONF_API_KEY]
     api_secret = conf[CONF_API_SECRET]
@@ -89,6 +98,16 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
 # Add these new functions for config flow support
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up Tuya from a config entry."""
+    # Pre-load tuya_connector in the executor to avoid blocking the event loop
+    # when the sensor platform is imported later.
+    try:
+        await hass.async_add_executor_job(
+            __import__, "tuya_connector"
+        )
+    except ImportError:
+        _LOGGER.error("Failed to import tuya_connector. Make sure it's installed.")
+        return False
+
     hass.data.setdefault(DOMAIN, {})
     hass.data[DOMAIN][entry.entry_id] = entry.data
 
