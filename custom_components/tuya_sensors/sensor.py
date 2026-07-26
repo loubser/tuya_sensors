@@ -487,6 +487,9 @@ class TuyaSensor(SensorEntity):
         else:
             self._attr_unique_id = f"tuya_{self._device_id}_{code}"
 
+        # Set should_poll to False as we use a DataUpdateCoordinator
+        self._attr_should_poll = False
+
         # Add device info to group sensors under a single device in HA
         self._attr_device_info = {
             "identifiers": {(DOMAIN, self._device_id)},
@@ -536,7 +539,3 @@ class TuyaSensor(SensorEntity):
         self.async_on_remove(
             self.coordinator.async_add_listener(self.async_write_ha_state)
         )
-        
-    async def async_update(self):
-        """Update entity."""
-        await self.coordinator.async_request_refresh()
