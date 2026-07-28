@@ -11,11 +11,31 @@
           "region": "Region",
           "scan_interval": "Update Interval (seconds)"
         }
+      },
+      "select_sensors": {
+        "title": "Select Properties",
+        "description": "Select which Tuya properties should be created as sensors",
+        "data": {
+          "selected_codes": "Properties"
+        }
+      },
+      "configure_sensor": {
+        "title": "Configure Sensor",
+        "description": "Configure details for property: {code}",
+        "data": {
+          "name": "Name",
+          "device_class": "Device Class",
+          "unit": "Unit of Measurement",
+          "state_class": "State Class",
+          "factor": "Factor"
+        }
       }
     },
     "error": {
       "invalid_auth": "Invalid authentication credentials",
-      "cannot_connect": "Failed to connect to Tuya Cloud"
+      "cannot_connect": "Failed to connect to Tuya Cloud",
+      "no_properties_found": "No properties found for the provided device IDs",
+      "data_center_error": "Tuya Data Center error (28841107). Please enable the correct Data Center in your Tuya IoT Platform project settings."
     },
     "abort": {
       "already_configured": "Tuya integration already configured"
@@ -25,12 +45,29 @@
     "step": {
       "init": {
         "title": "Tuya Cloud Options",
-        "description": "Configure which devices and sensors to monitor",
+        "description": "Configure polling interval and device IDs",
         "data": {
           "scan_interval": "Update Interval (seconds)",
-          "device_ids": "Specific Device IDs (leave empty for all)",
-          "include_sensors": "Only include these sensor types",
-          "exclude_sensors": "Exclude these sensor types"
+          "device_ids": "Specific Device IDs (comma-separated)",
+          "reconfigure_sensors": "Re-discover and configure sensors"
+        }
+      },
+      "select_sensors": {
+        "title": "Select Properties",
+        "description": "Select which Tuya properties should be created as sensors",
+        "data": {
+          "selected_codes": "Properties"
+        }
+      },
+      "configure_sensor": {
+        "title": "Configure Sensor",
+        "description": "Configure details for property: {code}",
+        "data": {
+          "name": "Name",
+          "device_class": "Device Class",
+          "unit": "Unit of Measurement",
+          "state_class": "State Class",
+          "factor": "Factor"
         }
       }
     }
