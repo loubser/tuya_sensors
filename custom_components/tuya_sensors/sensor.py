@@ -526,7 +526,9 @@ class TuyaSensor(SensorEntity):
     @property
     def available(self) -> bool:
         """Return True if entity is available."""
-        return self.coordinator.last_update_success
+        # We always return True to avoid 'unavailable' states in history.
+        # As long as the coordinator has some data, the sensor will show the last value.
+        return self.coordinator.data is not None
 
     @property
     def extra_state_attributes(self) -> Dict[str, Any]:
@@ -536,6 +538,7 @@ class TuyaSensor(SensorEntity):
             "code": self._code,
             "endpoint": self.coordinator._endpoint_used,
             "last_updated": self.coordinator.last_update_success,
+            "poll_success": self.coordinator.last_update_success,
         }
 
     async def async_added_to_hass(self) -> None:
